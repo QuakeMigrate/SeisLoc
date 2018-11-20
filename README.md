@@ -1,14 +1,16 @@
-# Coalescence Microseismic Scanning (CMS): Earthquake Onset Detection and Location Method
+# SeisLoc: Earthquake Onset Detection and Location Method
 
-Blah Blah, describe software.
+A python and C software package for detection and location of seismic events using a coherency and coalescence based technique. The advatages over other software packages is the generation of several visual outputs and infromation. The simple initiation scripts and examples help the user to define parameters for any seismological situation. The modular and open-source nature of the software package allows for the continued development from many instiutations and research groups. 
 
 
 ## Software Background and Methods 
-### CMSLut - Travel-Time look-up table generation and definition
+### Travel Time  - Travel-Time look-up table generation and definition
 
-### CMSMseed - Definition of continious seismic data strcture for MSEED data
+### Seismic Data - Definition of continious seismic data strcture for MSEED data
 
-### CMScan - Detection and Location of events.
+### Detect - Detection of coherent signals.
+
+### Trigger - Event Triggering and Locations.
 
 
 

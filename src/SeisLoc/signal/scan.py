@@ -1078,6 +1078,7 @@ class SeisScan:
 
         self.DetectionThreshold = 1
         self.MarginalWindow     = 30
+        self.MinimumRepeat      = 30
         self.CoalescenceGrid    = False
         self.CoalescenceVideo   = False
         self.CoalescencePicture = False
@@ -1310,10 +1311,10 @@ class SeisScan:
 
 
 
-            if (TimeVal-TimeMin) < timedelta(seconds=0.5*self.MarginalWindow):
-                TimeMin = CoaVal['DT'].iloc[indmin] + timedelta(seconds=-0.5*self.MarginalWindow)
-            if (TimeMax - TimeVal) < timedelta(seconds=0.5*self.MarginalWindow):
-                TimeMax = CoaVal['DT'].iloc[indmax] + timedelta(seconds=0.5*self.MarginalWindow)
+            if (TimeVal-TimeMin) < timedelta(seconds=self.MinimumRepeat):
+                TimeMin = CoaVal['DT'].iloc[indmin] + timedelta(seconds=-self.MinimumRepeat)
+            if (TimeMax - TimeVal) < timedelta(seconds=self.MinimumRepeat):
+                TimeMax = CoaVal['DT'].iloc[indmax] + timedelta(seconds=self.MinimumRepeat)
 
             
             # Appending these triggers to array
