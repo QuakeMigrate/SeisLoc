@@ -16,6 +16,7 @@ from obspy.core import UTCDateTime
 from obspy.signal.trigger import classic_sta_lta
 from scipy.signal import butter, lfilter
 from scipy.optimize import curve_fit
+from scipy import stats
 
 import SeisLoc.core.SeisLoclib as ilib
 
@@ -328,7 +329,7 @@ class SeisPlot:
             CoalescenceMarginalizeLocation - 
 
     '''
-    def __init__(self,lut,MAP,CoaMAP,DATA,EVENT,StationPick,PlotOptions=None):
+    def __init__(self,lut,MAP,CoaMAP,DATA,EVENT,StationPick,MarginalWindow,PlotOptions=None):
         '''
             This is the initial variatiables
         '''
@@ -338,7 +339,7 @@ class SeisPlot:
         self.MAP         = MAP
         self.CoaMAP      = CoaMAP
         self.StationPick = StationPick
-        self.RangeOrder  = False
+        self.RangeOrder  = True
 
 
         if PlotOptions == None:
@@ -370,6 +371,7 @@ class SeisPlot:
         self.logoPath = '{}/SeisLoc.png'.format('/'.join(ilib.__file__.split('/')[:-2]))
 
         self.MAPmax   = np.max(MAP)
+        self.MarginalWindow = MarginalWindow
 
 
         self.CoaTraceVLINE  = None
@@ -418,8 +420,8 @@ class SeisPlot:
 
         # ------------ Defining the stations in alphabetical order --------
         if self.RangeOrder == True: 
-            ttp = self.LUT.get_value_at('TIME_P',np.array([indexVal[0],indexVal[1],indexVal[2]]))[0][::-1]
-            StaInd = np.argsort(ttp)
+            ttp = self.LUT.get_value_at('TIME_P',np.array([indexVal[0],indexVal[1],indexVal[2]]))[0]
+            StaInd = np.argsort(ttp)[::-1]
         else:
             StaInd = np.argsort(self.DATA.StationInformation['Name'])[::-1]
 
@@ -686,13 +688,32 @@ class SeisPlot:
                             S_Onset.axvline(pd.to_datetime(STATION_pick['PickTime'].iloc[jj])+timedelta(seconds=+STATION_pick['PickError'].iloc[jj]/2),linestyle='--')
                             S_Onset.axvline(pd.to_datetime(STATION_pick['PickTime'].iloc[jj]))
 
-                ZTrace_Seis.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii]),color='red')
+                ZTrace_Seis.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii] ),color='red')
+                ZTrace_Seis.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=(self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii] - self.MarginalWindow - 0.1*self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii])),color='red',linestyle='--')
+                ZTrace_Seis.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=(self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii] + self.MarginalWindow + 0.1*self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii])),color='red',linestyle='--')
                 P_Onset.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii]),color='red')
-                YTrace_Seis.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii]),color='red')
-                XTrace_Seis.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii]),color='red')
-                S_Onset.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii]),color='red')
+                P_Onset.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=(self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii] - self.MarginalWindow - 0.1*self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii])),color='red',linestyle='--')
+                P_Onset.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=(self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii] + self.MarginalWindow + 0.1*self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii])),color='red',linestyle='--')
 
-                        
+
+                YTrace_Seis.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii]),color='red')
+                YTrace_Seis.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=(self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii] - self.MarginalWindow - 0.1*self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii])),color='red',linestyle='--')
+                YTrace_Seis.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=(self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii] + self.MarginalWindow + 0.1*self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii])),color='red',linestyle='--')
+
+                XTrace_Seis.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii]),color='red')
+                XTrace_Seis.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=(self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii] - self.MarginalWindow - 0.1*self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii])),color='red')
+                XTrace_Seis.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=(self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii] + self.MarginalWindow + 0.1*self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii])),color='red')
+
+
+                S_Onset.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii]),color='red')
+                S_Onset.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=(self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii] - self.MarginalWindow - 0.1*self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii])),color='red',linestyle='--')
+                S_Onset.axvline(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=(self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii] + self.MarginalWindow + 0.1*self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii])),color='red',linestyle='--')
+
+
+
+                P_Onset.axhline(self.StationPick['GAU_P'][ii]['PickThreshold'])
+                S_Onset.axhline(self.StationPick['GAU_S'][ii]['PickThreshold'])
+
                 # Refining the window as around the pick time
                 MINT = pd.to_datetime(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=0.5*self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii]))
                 MAXT = pd.to_datetime(self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=1.5*self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][ii]))
@@ -782,21 +803,21 @@ class SeisPlot:
 
         # --------------- Ordering by distance to event --------------
         if self.RangeOrder == True: 
-            ttp = self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][::-1]
-            StaInd = np.argsort(ttp)
+            ttp = self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0]
+            StaInd = abs(np.argsort(np.argsort(ttp))-np.max(np.argsort(np.argsort(ttp))))
         else:
             StaInd = np.argsort(self.DATA.StationInformation['Name'])[::-1]
 
 
         for ii in range(self.DATA.signal.shape[1]): 
            if self.FilteredSignal == False:
-                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.signal[0,ii,:]/np.max(abs(self.DATA.signal[0,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'r',linewidth=0.5)
-                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.signal[1,ii,:]/np.max(abs(self.DATA.signal[1,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'b',linewidth=0.5)
-                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.signal[2,ii,:]/np.max(abs(self.DATA.signal[2,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'g',linewidth=0.5)
+                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.signal[0,ii,:]/np.max(abs(self.DATA.signal[0,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'r',linewidth=0.5,zorder=1)
+                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.signal[1,ii,:]/np.max(abs(self.DATA.signal[1,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'b',linewidth=0.5,zorder=2)
+                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.signal[2,ii,:]/np.max(abs(self.DATA.signal[2,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'g',linewidth=0.5,zorder=3)
            else:
-                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.FilteredSignal[0,ii,:]/np.max(abs(self.DATA.FilteredSignal[0,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'r',linewidth=0.5)
-                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.FilteredSignal[1,ii,:]/np.max(abs(self.DATA.FilteredSignal[1,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'b',linewidth=0.5)
-                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.FilteredSignal[2,ii,:]/np.max(abs(self.DATA.FilteredSignal[2,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'g',linewidth=0.5)
+                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.FilteredSignal[0,ii,:]/np.max(abs(self.DATA.FilteredSignal[0,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'r',linewidth=0.5,zorder=1)
+                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.FilteredSignal[1,ii,:]/np.max(abs(self.DATA.FilteredSignal[1,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'b',linewidth=0.5,zorder=2)
+                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.FilteredSignal[2,ii,:]/np.max(abs(self.DATA.FilteredSignal[2,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'g',linewidth=0.5,zorder=3)
 
         # ---------------- Plotting the Station Travel Times -----------
         for i in range(self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0].shape[0]):
@@ -811,8 +832,8 @@ class SeisPlot:
                TS = np.append(TS,ts)
 
 
-        self.CoaArriavalTP = Coa_Trace.scatter(TP,(StaInd+1),40,'pink',marker='v')
-        self.CoaArriavalTS = Coa_Trace.scatter(TS,(StaInd+1),40,'purple',marker='v')
+        self.CoaArriavalTP = Coa_Trace.scatter(TP,(StaInd+1),50,'pink',marker='v',zorder=4,linewidth=0.1,edgecolors='black')
+        self.CoaArriavalTS = Coa_Trace.scatter(TS,(StaInd+1),50,'purple',marker='v',zorder=5,linewidth=0.1,edgecolors='black')
 
 #        Coa_Trace.set_ylim([0,ii+2])
         Coa_Trace.set_xlim([self.DATA.startTime+timedelta(seconds=1.6),np.max(TS)])
@@ -1078,6 +1099,7 @@ class SeisScan:
 
         self.DetectionThreshold = 1
         self.MarginalWindow     = 30
+        self.MinimumRepeat      = 30
         self.CoalescenceGrid    = False
         self.CoalescenceVideo   = False
         self.CoalescencePicture = False
@@ -1310,10 +1332,10 @@ class SeisScan:
 
 
 
-            if (TimeVal-TimeMin) < timedelta(seconds=0.5*self.MarginalWindow):
-                TimeMin = CoaVal['DT'].iloc[indmin] + timedelta(seconds=-0.5*self.MarginalWindow)
-            if (TimeMax - TimeVal) < timedelta(seconds=0.5*self.MarginalWindow):
-                TimeMax = CoaVal['DT'].iloc[indmax] + timedelta(seconds=0.5*self.MarginalWindow)
+            if (TimeVal-TimeMin) < timedelta(seconds=self.MinimumRepeat):
+                TimeMin = CoaVal['DT'].iloc[indmin] + timedelta(seconds=-self.MinimumRepeat)
+            if (TimeMax - TimeVal) < timedelta(seconds=self.MinimumRepeat):
+                TimeMax = CoaVal['DT'].iloc[indmax] + timedelta(seconds=self.MinimumRepeat)
 
             
             # Appending these triggers to array
@@ -1637,7 +1659,7 @@ class SeisScan:
         self.DATA.SNR_S = SNR_PGAU
 
 
-    def _GaussianTrigger(self,SNR,PHASE,cstart,eventTP,eventTS,Name):
+    def _GaussianTrigger(self,SNR,PHASE,cstart,eventTP,eventTS,Name,ttp,tts):
         '''
             Function to fit gaussian to onset function, based on knowledge of approximate trigger index, 
             lowest freq within signal and signal sampling rate. Will fit gaussian and return standard 
@@ -1649,12 +1671,11 @@ class SeisScan:
 
         sampling_rate = self.sample_rate
 
-        # Determining the triggering X location based on the SNR value
+        # Determining the modelled picks for P- and S-wave
         trig_idx_P = int(((eventTP-cstart).seconds + (eventTP-cstart).microseconds/10.**6) *sampling_rate)
         trig_idx_S = int(((eventTS-cstart).seconds + (eventTS-cstart).microseconds/10.**6) *sampling_rate)
 
-
-
+        # Defining the bounds to determine the cdf information from
         P_idxmin = int(trig_idx_P - (trig_idx_S-trig_idx_P)/2)
         P_idxmax = int(trig_idx_P + (trig_idx_S-trig_idx_P)/2)
         S_idxmin = int(trig_idx_S - (trig_idx_S-trig_idx_P)/2)
@@ -1665,106 +1686,122 @@ class SeisScan:
             if ii > len(SNR):
                 ii = len(SNR)
 
-
-        #print(' Pmin = {} , Pmax = {}'.format(P_idxmin,P_idxmax))
-        #print(' Smin = {} , Smax = {}'.format(S_idxmin,S_idxmax))
-    
-        Pidx = np.argmax(SNR[P_idxmin:P_idxmax]) + P_idxmin
-        Sidx = np.argmax(SNR[S_idxmin:S_idxmax]) + S_idxmin
-        #print(Pidx,Sidx)
-
-
-
+        # Setting parameters depending on the phase
         if PHASE == 'P':
             lowfreq = self.bp_filter_p1[0]
-            trig_idx = Pidx
+            win_min = P_idxmin
+            win_max = P_idxmax
         if PHASE == 'S':
             lowfreq = self.bp_filter_s1[0]
-            trig_idx = Sidx
+            win_min = S_idxmin
+            win_max = S_idxmax
 
-        data_half_range = int(1.25*sampling_rate/(lowfreq)) # half range number of indices to fit guassian over (for 1 wavelengths of lowest frequency component)
-        x_data = np.arange(trig_idx-data_half_range, trig_idx+data_half_range,dtype=float)/sampling_rate # x data, in seconds
+        # Determining the cdf for the data
+        fit = stats.norm.fit(SNR[win_min:win_max])
 
-        y_data = SNR[int(trig_idx-data_half_range):int(trig_idx+data_half_range)] # +/- one wavelength of lowest frequency around trigger
-        p0 = [np.amax(SNR), float(trig_idx)/sampling_rate, 1./(lowfreq/4.)] # Initial guess (should work for any sampling rate and frequency)
+        if (fit[0] != 0.0) and (fit[1] != 0.0):
 
-        d = 0
-        for jj in range(len(x_data)):
-            if d == 0:
-                XDATA = cstart + timedelta(seconds=x_data[jj])
-                d+=1
-            else:
-                XDATA = np.hstack((XDATA,(cstart + timedelta(seconds=x_data[jj]))))
+            cdf = stats.norm.cdf(np.arange(0,100,0.01),fit[0],fit[1])
 
 
+            exceedence_value = np.arange(0,100,0.01)[np.where(cdf >= self.PickThreshold)[0][0]]
+            std_SNR = np.arange(0,100,0.01)[np.where(cdf >= 0.688)[0][0]]
+            #print(exceedence_value)
+
+            # Defining the bounds to search for the event over
+
+            P_idxmin = int(trig_idx_P - int((self.MarginalWindow + ttp*0.1)*sampling_rate))
+            P_idxmax = int(trig_idx_P + int((self.MarginalWindow + ttp*0.1)*sampling_rate))
+            S_idxmin = int(trig_idx_S - int((self.MarginalWindow + tts*0.1)*sampling_rate))
+            S_idxmax = int(trig_idx_S + int((self.MarginalWindow + tts*0.1)*sampling_rate))
+
+
+            # Determining the pick as the maximum coalescence value
+            Pidx = np.argmax(SNR[P_idxmin:P_idxmax]) + P_idxmin
+            Sidx = np.argmax(SNR[S_idxmin:S_idxmax]) + S_idxmin
+            #print(Pidx,Sidx)
+
+            if PHASE == 'P':
+                maxSNR = Pidx
+            if PHASE == 'S':
+                maxSNR = Sidx
+
+            if SNR[maxSNR] >= exceedence_value:
+                # Selecting a time window that is equal to the data that is above the PickThreshold
+                ppf = np.where(SNR <= std_SNR)[0] - maxSNR
+                ppf_min = int(maxSNR - np.min(abs(ppf[np.where(ppf < 0)])))
+                ppf_max = int(maxSNR + np.min(abs(ppf[np.where(ppf > 0)])))
 
 
 
+                data_half_range = int(1.25*sampling_rate/(lowfreq)) # half range number of indices to fit guassian over (for 1 wavelengths of lowest frequency component)
+                x_data = np.arange(ppf_min, ppf_max,dtype=float)/sampling_rate # x data, in seconds
+                y_data = SNR[ppf_min:ppf_max] # +/- one wavelength of lowest frequency around trigger
+                p0 = [np.amax(y_data), float(ppf_min+1)/sampling_rate, 1./(lowfreq/4.)] # Initial guess (should work for any sampling rate and frequency)
 
+                d = 0
+                for jj in range(len(x_data)):
+                    if d == 0:
+                        XDATA = cstart + timedelta(seconds=x_data[jj])
+                        d+=1
+                    else:
+                        XDATA = np.hstack((XDATA,(cstart + timedelta(seconds=x_data[jj]))))
 
+                try:
+                    popt, pcov = curve_fit(gaussian_func, x_data, y_data, p0) # Fit gaussian to data
+                    sigma = np.absolute(popt[2]) # Get standard deviation from gaussian fit
 
+                    # Mean is popt[1]. x_data[0] + popt[1] (In seconds)
+                    mean = cstart + timedelta(seconds=float(popt[1]))
 
+                    maxSNR = popt[0]
 
-
-        
-        try:
-            popt, pcov = curve_fit(gaussian_func, x_data, y_data, p0) # Fit gaussian to data
-            sigma = np.absolute(popt[2]) # Get standard deviation from gaussian fit
-
-            # Mean is popt[1]. x_data[0] + popt[1] (In seconds)
-            mean = cstart + timedelta(seconds=float(popt[1]))
-
-            maxSNR = popt[0]
-
-
-            # Determining if the pick is above 
-            n, bins = np.histogram(SNR,bins=np.arange(0,np.max(SNR),7/5000))
-            mids = 0.5*(bins[1:] + bins[:-1])
-            ncum = np.cumsum(n)/np.sum(n)
-            #print(ncum)
-
-            #print(np.where((mids-popt[0]) >= 0)[0])
-
-            if (len(np.where((mids-popt[0]) >= 0)[0]) == 0):
-                #print('Picked {} for {}'.format(PHASE,Name))
-                GAU_FITS = {}
-                GAU_FITS['popt'] = popt
-                GAU_FITS['xdata'] = x_data
-                GAU_FITS['xdata_dt'] = XDATA
-                GAU_FITS['PickValue'] = 1.0 
-
-            else:
-                if (np.min(ncum[np.where((mids-popt[0]) >= 0)[0]]) >= self.PickThreshold):
-                    #print('Picked 2 {} for {} - {}'.format(PHASE,Name,np.min(ncum[np.where((mids-popt[0]) >= 0)[0]])))
                     GAU_FITS = {}
                     GAU_FITS['popt'] = popt
                     GAU_FITS['xdata'] = x_data
                     GAU_FITS['xdata_dt'] = XDATA
-                    GAU_FITS['PickValue'] = np.min(ncum[np.where((mids-popt[0]) >= 0)[0]])
-                else:
-                    #print('Didnt Pick {} for {} - {}'.format(PHASE,Name,np.min(ncum[np.where((mids-popt[0]) >= 0)[0]])))
+                    GAU_FITS['PickValue'] = maxSNR
+                    GAU_FITS['PickThreshold'] = exceedence_value
+
+                except:
                     GAU_FITS = {}
-                    GAU_FITS['popt'] = np.zeros((3))
-                    GAU_FITS['xdata'] = np.zeros(x_data.shape)
-                    GAU_FITS['xdata_dt'] = np.zeros(XDATA.shape)
-                    GAU_FITS['PickValue'] = np.min(ncum[np.where((mids-popt[0]) >= 0)[0]])
+                    GAU_FITS['popt'] = 0
+                    GAU_FITS['xdata'] = 0
+                    GAU_FITS['xdata_dt'] = 0
+                    GAU_FITS['PickValue'] = -1
+                    GAU_FITS['PickThreshold'] = -1
+
+
                     sigma = -1
                     mean  = -1
-                    maxSNR = -1 
+                    maxSNR = -1
+
+            else:
+
+                GAU_FITS = {}
+                GAU_FITS['popt'] = 0
+                GAU_FITS['xdata'] = 0
+                GAU_FITS['xdata_dt'] = 0
+                GAU_FITS['PickValue'] = -1
+                GAU_FITS['PickThreshold'] = -1
 
 
-            #print(mean)
-        except:
-            GAU_FITS = {}
-            GAU_FITS['popt'] = np.zeros((3))
-            GAU_FITS['xdata'] = np.zeros(x_data.shape)
-            GAU_FITS['xdata_dt'] = np.zeros(XDATA.shape)
-            GAU_FITS['PickValue'] = -1
+                sigma = -1
+                mean  = -1
+                maxSNR = -1
+        else:
+
+                GAU_FITS = {}
+                GAU_FITS['popt'] = 0
+                GAU_FITS['xdata'] = 0
+                GAU_FITS['xdata_dt'] = 0
+                GAU_FITS['PickValue'] = -1
+                GAU_FITS['PickThreshold'] = -1
 
 
-            sigma = -1
-            mean  = -1
-            maxSNR = -1
+                sigma = -1
+                mean  = -1
+                maxSNR = -1
 
         return GAU_FITS,maxSNR,sigma,mean
 
@@ -1796,7 +1833,7 @@ class SeisScan:
             stationEventST = EVENT_MaxCoa['DT'] + timedelta(seconds=tts[s])
 
             if self.PickingType == 'Gaussian':
-                GauInfoP,maxSNR_P,Err,Mn = self._GaussianTrigger(SNR_P[s],'P',self.DATA.startTime,stationEventPT.to_pydatetime(),stationEventST.to_pydatetime(),self.lookup_table.station_data['Name'][s])
+                GauInfoP,maxSNR_P,Err,Mn = self._GaussianTrigger(SNR_P[s],'P',self.DATA.startTime,stationEventPT.to_pydatetime(),stationEventST.to_pydatetime(),self.lookup_table.station_data['Name'][s],ttp[s],tts[s])
 
             if c==0:
                 GAUP = GauInfoP
@@ -1809,7 +1846,7 @@ class SeisScan:
 
 
             if self.PickingType == 'Gaussian':
-                GauInfoS,maxSNR_S,Err,Mn = self._GaussianTrigger(SNR_S[s],'S',self.DATA.startTime,stationEventPT.to_pydatetime(),stationEventST.to_pydatetime(),self.lookup_table.station_data['Name'][s])
+                GauInfoS,maxSNR_S,Err,Mn = self._GaussianTrigger(SNR_S[s],'S',self.DATA.startTime,stationEventPT.to_pydatetime(),stationEventST.to_pydatetime(),self.lookup_table.station_data['Name'][s],ttp[s],tts[s])
 
 
             if d==0:
@@ -2014,7 +2051,7 @@ class SeisScan:
             if self.CoalescenceTrace == True:
                 tic()
                 print('Creating Station Traces')
-                SeisPLT = SeisPlot(self.lookup_table,self.MAP,self.CoaMAP,self.DATA,self.EVENT,StationPick)
+                SeisPLT = SeisPlot(self.lookup_table,self.MAP,self.CoaMAP,self.DATA,self.EVENT,StationPick,self.MarginalWindow)
                 SeisPLT.CoalescenceTrace(SaveFilename='{}_{}'.format(path.join(self.output.path, self.output.name),EVENTS['EventID'].iloc[e].astype(str)))
                 toc()
 
@@ -2027,14 +2064,14 @@ class SeisScan:
             if self.CoalescenceVideo == True:
                 tic()
                 print('Creating Seismic Videos')
-                SeisPLT = SeisPlot(self.lookup_table,self.MAP,self.CoaMAP,self.DATA,self.EVENT,StationPick)
+                SeisPLT = SeisPlot(self.lookup_table,self.MAP,self.CoaMAP,self.DATA,self.EVENT,StationPick,self.MarginalWindow)
                 SeisPLT.CoalescenceVideo(SaveFilename='{}_{}'.format(path.join(self.output.path, self.output.name),EVENTS['EventID'].iloc[e].astype(str)))
                 toc()
 
             if self.CoalescencePicture == True:
                 tic()
                 print('Creating Seismic Picture')
-                SeisPLT = SeisPlot(self.lookup_table,self.MAP,self.CoaMAP,self.DATA,self.EVENT,StationPick)
+                SeisPLT = SeisPlot(self.lookup_table,self.MAP,self.CoaMAP,self.DATA,self.EVENT,StationPick,self.MarginalWindow)
                 SeisPLT.CoalescenceMarginal(SaveFilename='{}_{}'.format(path.join(self.output.path, self.output.name),EVENTS['EventID'].iloc[e].astype(str)))
                 toc()
 
