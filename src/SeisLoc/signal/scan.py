@@ -1865,6 +1865,89 @@ class SeisScan:
 
         return STATION_pickS,GAUP,GAUS
 
+
+
+
+    def gau3d(self, nx,ny,nz,sgm):
+        nx2 = (nx - 1) / 2
+        ny2 = (ny - 1) / 2
+        nz2 = (nz - 1) / 2
+        x = np.linspace(-nx2, nx2, nx)
+        y = np.linspace(-ny2, ny2, ny)
+        z = np.linspace(-nz2, nz2, nz)
+        ix, iy, iz = np.meshgrid(x, y, z, indexing='ij')
+        if np.isscalar(sgm):
+            sgm = np.repeat(sgm, 3)
+        sx, sy, sz = sgm
+        return np.exp(-(ix * ix) / (2 * sx * sx) - (iy * iy) / (2 * sy * sy) - (iz * iz) / (2 * sz * sz))
+
+
+    def gaufilt3d(self, vol, sgm, shp=None):
+        if shp is None:
+            shp = vol.shape
+        nx, ny, nz = shp
+        flt = self.gau3d(nx, ny, nz, sgm)
+        return fftconvolve(vol, flt, mode='same')
+
+
+    def _mask3d(self, nn, ii, win):
+        nn = np.array(nn)
+        ii = np.array(ii)
+        w2 = (win-1)//2
+        x1, y1, z1 = np.clip(ii - w2, 0 * nn, nn)
+        x2, y2, z2 = np.clip(ii + w2 + 1, 0 * nn, nn)
+        mask = np.zeros(nn, dtype=np.bool)
+        mask[x1:x2, y1:y2, z1:z2] = True
+        return mask
+
+
+    def gaufit3d(self, pdf, lx=None, ly=None, lz=None, smooth=None, thresh=0.0, win=3, mask=7):
+        nx, ny, nz = pdf.shape
+        if smooth is not None:
+            pdf = self.gaufilt3d(pdf, smooth, [11, 11, 11])
+        mx, my, mz = np.unravel_index(pdf.argmax(), pdf.shape)
+        mval = pdf[mx, my, mz]
+        flg = np.logical_or(
+            np.logical_and(pdf > mval*np.exp(-(thresh*thresh)/2),
+                           self._mask3d([nx, ny, nz], [mx, my, mz], mask)),
+            self._mask3d([nx, ny, nz], [mx, my, mz], win))
+        ix, iy, iz = np.where(flg)
+        # print("X = {}-{}, Y = {}-{}, Z= {}-{}".format(min(ix), max(ix), min(iy), max(iy), min(iz), max(iz)))
+        ncell = len(ix)
+
+        if lx is None:
+            lx = np.arange(nx)
+            ly = np.arange(ny)
+            lz = np.arange(nz)
+
+        if lx.ndim == 3:
+            iloc = [lx[mx, my, mz], ly[mx, my, mz], lz[mx, my, mz]]
+            x = lx[ix, iy, iz] - iloc[0]
+            y = ly[ix, iy, iz] - iloc[1]
+            z = lz[ix, iy, iz] - iloc[2]
+        else:
+            iloc = [lx[mx], ly[my], lz[mz]]
+            x = lx[ix] - iloc[0]
+            y = ly[iy] - iloc[1]
+            z = lz[iz] - iloc[2]
+
+        X = np.c_[x * x, y * y, z * z, x * y, x * z, y * z, x, y, z, np.ones(ncell)].T
+        Y = -np.log(np.clip(pdf.astype(np.float64)[ix, iy, iz], 1e-300, np.inf))
+
+        I = np.linalg.pinv(X)
+        P = np.matmul(Y, I)
+        G = -np.array([2 * P[0], P[3], P[4], P[3], 2 * P[1], P[5], P[4], P[5], 2 * P[2]]).reshape((3, 3))
+        H = np.array([P[6], P[7], P[8]])
+        loc = np.matmul(np.linalg.inv(G), H)
+        cx, cy, cz = loc
+        K = P[9] - P[0] * cx * cx - P[1] * cy * cy - P[2] * cz * cz - P[3] * cx * cy - P[4] * cx * cz - P[5] * cy * cz
+        M = np.array([P[0], P[3] / 2, P[4] / 2, P[3] / 2, P[1], P[5] / 2, P[4] / 2, P[5] / 2, P[2]]).reshape(3, 3)
+        egv, vec = np.linalg.eig(M)
+        sgm = np.sqrt(0.5 / np.clip(np.abs(egv), 1e-10, np.inf))
+        val = np.exp(-K)
+        csgm = np.sqrt(0.5 / np.clip(np.abs(M.diagonal()), 1e-10, np.inf))
+        return loc + iloc, vec, sgm, csgm, val
+
     def _ErrorEllipse(self,COA3D):
         """
         Function to calculate covariance matrix and expectation hypocentre from coalescence array.
@@ -1911,47 +1994,18 @@ class SeisScan:
 
 
         # Determining the maximum location, and taking 2xgrid cells possitive and negative for location in each dimension
-        CoaMap_max =  np.where(COA3D == np.max(COA3D))
-        xmin = CoaMap_max[0][0]-2
-        xmax = CoaMap_max[0][0]+2
-        ymin = CoaMap_max[1][0]-2
-        ymax = CoaMap_max[1][0]+2
-        zmin = CoaMap_max[2][0]-2
-        zmax = CoaMap_max[2][0]+2
-
-        x_data = np.arange(1,6) - 3.0
-        try:
-            y_data = COA3D[xmin:xmax+1,ymin:ymax+1,zmin:zmax+1][:,2,2]
-            p0 = [np.max(y_data), 0, 1] # Initial guess (should work for any sampling rate and frequency)
-            popt, pcov = curve_fit(gaussian_func, x_data, y_data, p0) # Fit gaussian to data
-            xloca = popt[1]
-        except:
-            xloca = 0
-
-
-        try:
-            y_data = COA3D[xmin:xmax+1,ymin:ymax+1,zmin:zmax+1][2,:,2]
-            p0 = [np.max(y_data), 0, 1] # Initial guess (should work for any sampling rate and frequency)
-            popt, pcov = curve_fit(gaussian_func, x_data, y_data, p0) # Fit gaussian to data
-            yloca = popt[1]
-        except:
-            yloca = 0
-
-
-        try:
-            y_data = COA3D[xmin:xmax+1,ymin:ymax+1,zmin:zmax+1][2,2,:]
-            p0 = [np.max(y_data), 0, 1] # Initial guess (should work for any sampling rate and frequency)
-            popt, pcov = curve_fit(gaussian_func, x_data, y_data, p0) # Fit gaussian to data
-            zloca = popt[1]
-        except:
-            zloca = 0
-
-
+        GAU3D = self.gaufit3d(COA3D)
 
         # Converting the grid location to X,Y,Z
-        expect_vector = self.lookup_table.xyz2coord(self.lookup_table.loc2xyz(np.array([[xloca + CoaMap_max[0][0],yloca + CoaMap_max[1][0],zloca + CoaMap_max[2][0]]])))[0]
+        expect_vector = self.lookup_table.xyz2coord(self.lookup_table.loc2xyz(np.array([[GAU3D[0][0],GAU3D[0][1],GAU3D[0][2]]])))[0]
 
-        return expect_vector, cov_matrix
+
+        ErrorXYZ = np.array([GAU3D[2][0]*self.lookup_table.cell_size[0], GAU3D[2][1]*self.lookup_table.cell_size[1], GAU3D[2][2]*self.lookup_table.cell_size[2]])
+
+        return expect_vector, ErrorXYZ
+
+
+
 
     def _LocationError(self,Map4D):
 
@@ -1972,8 +2026,11 @@ class SeisScan:
 
 
         # Determining the location error as a error-ellipse
-        LOC,ErrCOV = self._ErrorEllipse(CoaMap)
-        LOC_ERR =  np.array([np.sqrt(ErrCOV[0,0]), np.sqrt(ErrCOV[1,1]), np.sqrt(ErrCOV[2,2])])
+        LOC,LOC_ERR = self._ErrorEllipse(CoaMap)
+
+
+        #LOC,ErrCOV = self._ErrorEllipse(CoaMap)
+        #LOC_ERR =  np.array([np.sqrt(ErrCOV[0,0]), np.sqrt(ErrCOV[1,1]), np.sqrt(ErrCOV[2,2])])
 
 
 
