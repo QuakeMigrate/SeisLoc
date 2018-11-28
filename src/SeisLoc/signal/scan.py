@@ -344,8 +344,8 @@ class SeisPlot:
 
         if PlotOptions == None:
             self.TraceScaling     = 1
-            self.CMAP             = 'magma'
-            self.LineStationColor = 'white'
+            self.CMAP             = 'hot_r'
+            self.LineStationColor = 'black'
             self.Plot_Stations    = True
             self.FilteredSignal   = True
             self.XYFiles          = None
@@ -1100,6 +1100,7 @@ class SeisScan:
         self.DetectionThreshold = 1
         self.MarginalWindow     = 30
         self.MinimumRepeat      = 30
+        self.PercentageTT       = 0.1
         self.CoalescenceGrid    = False
         self.CoalescenceVideo   = False
         self.CoalescencePicture = False
@@ -1299,19 +1300,20 @@ class SeisScan:
         # Defining when exceeded threshold
         CoaVal = CoaVal[CoaVal['COA'] > self.DetectionThreshold] 
         CoaVal = CoaVal[(CoaVal['DT'] >= datetime.strptime(starttime,'%Y-%m-%dT%H:%M:%S.%f')) & (CoaVal['DT'] <= datetime.strptime(endtime,'%Y-%m-%dT%H:%M:%S.%f'))]
+        
         CoaVal = CoaVal.reset_index(drop=True)
-
         # ----------- Determining the initial triggered events, not inspecting overlaps ------
         c = 0
         e = 1
-        while c < len(CoaVal):
+        while c < len(CoaVal)-1:
 
             # Determining the index when above the level and maximum value
             d=c
+
             while CoaVal['DT'].iloc[d] + timedelta(seconds=1/self.sample_rate) == CoaVal['DT'].iloc[d+1]:
                 d+=1
-                if d+1 >= len(CoaVal)-1:
-                    d=len(CoaVal)-1
+                if d+1 >= len(CoaVal)-2:
+                    d=len(CoaVal)-2
                     break
 
 
@@ -1710,10 +1712,17 @@ class SeisScan:
 
             # Defining the bounds to search for the event over
 
-            P_idxmin = int(trig_idx_P - int((self.MarginalWindow + ttp*0.1)*sampling_rate))
-            P_idxmax = int(trig_idx_P + int((self.MarginalWindow + ttp*0.1)*sampling_rate))
-            S_idxmin = int(trig_idx_S - int((self.MarginalWindow + tts*0.1)*sampling_rate))
-            S_idxmax = int(trig_idx_S + int((self.MarginalWindow + tts*0.1)*sampling_rate))
+            P_idxmin_new = int(trig_idx_P - int((self.MarginalWindow + ttp*self.PercentageTT)*sampling_rate))
+            P_idxmax_new = int(trig_idx_P + int((self.MarginalWindow + ttp*self.PercentageTT)*sampling_rate))
+            S_idxmin_new = int(trig_idx_S - int((self.MarginalWindow + tts*self.PercentageTT)*sampling_rate))
+            S_idxmax_new = int(trig_idx_S + int((self.MarginalWindow + tts*self.PercentageTT)*sampling_rate))
+
+
+            # Setting so the search region can't be bigger than P-S/2. 
+            P_idxmin = np.max([P_idxmin,P_idxmin_new])
+            P_idxmax = np.min([P_idxmax,P_idxmax_new])
+            S_idxmin = np.max([S_idxmin,S_idxmin_new])
+            S_idxmax = np.min([S_idxmax,S_idxmax_new])
 
 
             # Determining the pick as the maximum coalescence value
@@ -1783,7 +1792,7 @@ class SeisScan:
                 GAU_FITS['xdata'] = 0
                 GAU_FITS['xdata_dt'] = 0
                 GAU_FITS['PickValue'] = -1
-                GAU_FITS['PickThreshold'] = -1
+                GAU_FITS['PickThreshold'] = exceedence_value
 
 
                 sigma = -1
@@ -1976,7 +1985,7 @@ class SeisScan:
         x_expect = np.sum(samples_weights*x_samples)/SumSW
         y_expect = np.sum(samples_weights*y_samples)/SumSW
         z_expect = np.sum(samples_weights*z_samples)/SumSW
-
+        print('Covariance GridXYZ - X={},Y={},Z={}'.format(x_expect,y_expect,z_expect))
 
 
         # And calculate covariance matrix:

@@ -126,5 +126,5 @@ dependencies:
     - msgpack-python==0.4.8
     - pyqsub==1.0.3
     - scikit-fmm==0.0.9
-prefix: /home/jds70/miniconda2/envs/SeisLoc
+prefix: ./SeisLoc_env
 
