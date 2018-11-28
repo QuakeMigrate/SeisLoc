@@ -36,6 +36,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pylab as plt
 import matplotlib.dates as mdates
+from matplotlib import patches
 import matplotlib.image as mpimg
 import matplotlib.animation as animation
 
@@ -755,7 +756,7 @@ class SeisPlot:
         else:
             ani.save('{}_CoalescenceVideo.mp4'.format(SaveFilename),writer=writer)
 
-    def CoalescenceMarginal(self,SaveFilename=None):
+    def CoalescenceMarginal(self,SaveFilename=None, Earthquake=None):
         '''
             Generates a Marginal window about the event to determine the error.
 
@@ -772,12 +773,6 @@ class SeisPlot:
 
         # Determining the maginal window value from the coalescence function
         mMAP = self.CoaMAP
-        # mMAP = np.log(np.sum(np.exp(mMAP),axis=-1))
-        # mMAP = mMAP/np.max(mMAP)
-        # mMAP_Cutoff = np.percentile(mMAP,95)
-        # mMAP[mMAP < mMAP_Cutoff] = mMAP_Cutoff 
-        # mMAP = mMAP - mMAP_Cutoff 
-        # mMAP = mMAP/np.max(mMAP)
         indexVal = np.where(mMAP == np.max(mMAP))
         indexCoord = self.LUT.xyz2coord(self.LUT.loc2xyz(np.array([[indexVal[0][0],indexVal[1][0],indexVal[2][0]]])))
 
@@ -855,6 +850,13 @@ class SeisPlot:
                 tick.set_rotation(45)
         self.CoaValVLINE   = Coa_CoaVal.axvline(TimeSlice,0,1000,linestyle='--',linewidth=2,color='r')
 
+        # -------------- Determining Error ellipse for Covariance -----------
+        dCo = abs(indexCoord - self.LUT.xyz2coord(self.LUT.loc2xyz(np.array([[indexVal[0][0] + int(Earthquake['Covariance_ErrX'].iloc[0]/self.LUT.cell_size[0]),indexVal[1][0] + int(Earthquake['Covariance_ErrY'].iloc[0]/self.LUT.cell_size[1]),indexVal[2][0] + int(Earthquake['Covariance_ErrZ'].iloc[0]/self.LUT.cell_size[2])]]))))
+
+        ellipse_XY = patches.Ellipse((Earthquake['Covariance_X'].iloc[0], Earthquake['Covariance_Y'].iloc[0]), 2*dCo[0][0], 2*dCo[0][1], angle=0, linewidth=2, fill=False)
+        ellipse_YZ = patches.Ellipse((Earthquake['Covariance_X'].iloc[0], Earthquake['Covariance_Z'].iloc[0]), 2*dCo[0][0], 2*dCo[0][2], angle=0, linewidth=2, fill=False)
+        ellipse_XZ = patches.Ellipse((Earthquake['Covariance_Z'].iloc[0], Earthquake['Covariance_Y'].iloc[0]), 2*dCo[0][2], 2*dCo[0][1], angle=0, linewidth=2, fill=False)
+
 
 
         # ------------- Spatial Function  ----------- 
@@ -865,24 +867,31 @@ class SeisPlot:
         pc = PatchCollection([rect], facecolor='k')
         Coa_XYSlice.add_collection(pc)
         Coa_XYSlice.pcolormesh(gridX,gridY,mMAP[:,:,int(indexVal[2][0])],cmap=self.CMAP,edgecolors='face')
-        CS = Coa_XYSlice.contour(gridX,gridY,mMAP[:,:,int(indexVal[2][0])],levels=[0.65,0.75,0.95],colors=('g','m','k'))
-        Coa_XYSlice.clabel(CS, inline=1, fontsize=10)
+        #CS = Coa_XYSlice.contour(gridX,gridY,mMAP[:,:,int(indexVal[2][0])],levels=[0.65,0.75,0.95],colors=('g','m','k'))
+        #Coa_XYSlice.clabel(CS, inline=1, fontsize=10)
         Coa_XYSlice.set_xlim([min(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,0]),max(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,0])])
         Coa_XYSlice.set_ylim([min(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,1]),max(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,1])])
         Coa_XYSlice.axvline(x=indexCoord[0][0],linestyle='--',linewidth=2,color=self.LineStationColor)
         Coa_XYSlice.axhline(y=indexCoord[0][1],linestyle='--',linewidth=2,color=self.LineStationColor)
+        Coa_XYSlice.scatter(Earthquake['Gaussian_X'].iloc[0],Earthquake['Gaussian_Y'].iloc[0],150,c='pink',marker='*')
+        Coa_XYSlice.scatter(Earthquake['Covariance_X'].iloc[0],Earthquake['Covariance_Y'].iloc[0],150,c='blue',marker='*')
+        Coa_XYSlice.add_patch(ellipse_XY)
+
 
         gridX,gridY = np.mgrid[min(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,0]):max(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,0]):(max(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,0]) - min(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,0]))/self.LUT.cell_count[0], min(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,2]):max(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,2]):(max(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,2]) - min(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,2]))/self.LUT.cell_count[2]]
         rect = Rectangle((np.min(gridX), np.min(gridY)), np.max(gridX)-np.min(gridX),np.max(gridY)-np.min(gridY))
         pc = PatchCollection([rect], facecolor='k')
         Coa_YZSlice.add_collection(pc)
         Coa_YZSlice.pcolormesh(gridX,gridY,mMAP[:,int(indexVal[1][0]),:],cmap=self.CMAP,edgecolors='face')
-        CS = Coa_YZSlice.contour(gridX,gridY,mMAP[:,int(indexVal[1][0]),:], levels=[0.65,0.75,0.95],colors=('g','m','k'))
-        Coa_YZSlice.clabel(CS, inline=1, fontsize=10)
+        #CS = Coa_YZSlice.contour(gridX,gridY,mMAP[:,int(indexVal[1][0]),:], levels=[0.65,0.75,0.95],colors=('g','m','k'))
+        #Coa_YZSlice.clabel(CS, inline=1, fontsize=10)
         Coa_YZSlice.set_xlim([min(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,0]),max(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,0])])
         Coa_YZSlice.set_ylim([max(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,2]),min(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,2])])
         Coa_YZSlice.axvline(x=indexCoord[0][0],linestyle='--',linewidth=2,color=self.LineStationColor)
         Coa_YZSlice.axhline(y=indexCoord[0][2],linestyle='--',linewidth=2,color=self.LineStationColor)
+        Coa_YZSlice.scatter(Earthquake['Gaussian_X'].iloc[0],Earthquake['Gaussian_Z'].iloc[0],150,c='pink',marker='*')
+        Coa_YZSlice.scatter(Earthquake['Covariance_X'].iloc[0],Earthquake['Covariance_Z'].iloc[0],150,c='blue',marker='*')
+        Coa_YZSlice.add_patch(ellipse_YZ)
         Coa_YZSlice.invert_yaxis()
 
 
@@ -891,11 +900,14 @@ class SeisPlot:
         pc = PatchCollection([rect], facecolor='k')
         Coa_XZSlice.add_collection(pc)
         Coa_XZSlice.pcolormesh(gridX,gridY,mMAP[int(indexVal[0][0]),:,:].transpose(),cmap=self.CMAP,edgecolors='face')
-        CS = Coa_XZSlice.contour(gridX,gridY,mMAP[int(indexVal[0][0]),:,:].transpose(),levels =[0.65,0.75,0.95],colors=('g','m','k'))
+        #CS = Coa_XZSlice.contour(gridX,gridY,mMAP[int(indexVal[0][0]),:,:].transpose(),levels =[0.65,0.75,0.95],colors=('g','m','k'))
         Coa_XZSlice.set_xlim([max(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,2]),min(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,2])])
         Coa_XZSlice.set_ylim([min(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,1]),max(self.LUT.xyz2coord(self.LUT.get_grid_xyz())[:,1])])
         Coa_XZSlice.axvline(x=indexCoord[0][2],linestyle='--',linewidth=2,color=self.LineStationColor)
         Coa_XZSlice.axhline(y=indexCoord[0][1],linestyle='--',linewidth=2,color=self.LineStationColor)
+        Coa_XZSlice.scatter(Earthquake['Gaussian_Z'].iloc[0],Earthquake['Gaussian_Y'].iloc[0],150,c='pink',marker='*')
+        Coa_XZSlice.scatter(Earthquake['Covariance_Z'].iloc[0],Earthquake['Covariance_Y'].iloc[0],150,c='blue',marker='*')
+        Coa_XZSlice.add_patch(ellipse_XZ)
 
         # Plotting the station locations
         Coa_XYSlice.scatter(self.LUT.station_data['Longitude'],self.LUT.station_data['Latitude'],15,marker='^',color=self.LineStationColor)
@@ -2141,7 +2153,7 @@ class SeisScan:
                 tic()
                 print('Creating Seismic Picture')
                 SeisPLT = SeisPlot(self.lookup_table,self.MAP,self.CoaMAP,self.DATA,self.EVENT,StationPick,self.MarginalWindow)
-                SeisPLT.CoalescenceMarginal(SaveFilename='{}_{}'.format(path.join(self.output.path, self.output.name),EVENTS['EventID'].iloc[e].astype(str)))
+                SeisPLT.CoalescenceMarginal(SaveFilename='{}_{}'.format(path.join(self.output.path, self.output.name),EVENTS['EventID'].iloc[e].astype(str)),Earthquake=EV)
                 toc()
 
             self.MAP    = None
