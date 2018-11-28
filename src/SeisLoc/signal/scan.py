@@ -1985,7 +1985,7 @@ class SeisScan:
         x_expect = np.sum(samples_weights*x_samples)/SumSW
         y_expect = np.sum(samples_weights*y_samples)/SumSW
         z_expect = np.sum(samples_weights*z_samples)/SumSW
-        print('Covariance GridXYZ - X={},Y={},Z={}'.format(x_expect,y_expect,z_expect))
+        #print('Covariance GridXYZ - X={},Y={},Z={}'.format(x_expect,y_expect,z_expect))
 
 
         # And calculate covariance matrix:
@@ -2007,7 +2007,9 @@ class SeisScan:
 
         # Converting the grid location to X,Y,Z
         expect_vector = self.lookup_table.xyz2coord(self.lookup_table.loc2xyz(np.array([[GAU3D[0][0],GAU3D[0][1],GAU3D[0][2]]])))[0]
-        loc_cov       = self.lookup_table.xyz2coord(self.lookup_table.loc2xyz(np.array([[x_expect,y_expect,z_expect]])))[0]
+
+        expect_vector_cov = np.array([x_expect, y_expect, z_expect], dtype=float)
+        Loc_cov = self.lookup_table.xyz2coord(self.lookup_table.loc2xyz(np.array([[expect_vector_cov[0]/self.lookup_table.cell_size[0],expect_vector_cov[1]/self.lookup_table.cell_size[1],expect_vector_cov[2]/self.lookup_table.cell_size[2]]])))[0]
 
         ErrorXYZ = np.array([GAU3D[2][0]*self.lookup_table.cell_size[0], GAU3D[2][1]*self.lookup_table.cell_size[1], GAU3D[2][2]*self.lookup_table.cell_size[2]])
 
@@ -2036,7 +2038,7 @@ class SeisScan:
 
 
         # Determining the location error as a error-ellipse
-        LOC,LOC_ERR,LOC_Cov,ErrCov = self._ErrorEllipse(CoaMap)
+        LOC,LOC_ERR,LOC_Cov,ErrCOV = self._ErrorEllipse(CoaMap)
 
 
         #LOC,ErrCOV = self._ErrorEllipse(CoaMap)

@@ -1985,7 +1985,7 @@ class SeisScan:
         x_expect = np.sum(samples_weights*x_samples)/SumSW
         y_expect = np.sum(samples_weights*y_samples)/SumSW
         z_expect = np.sum(samples_weights*z_samples)/SumSW
-
+        #print('Covariance GridXYZ - X={},Y={},Z={}'.format(x_expect,y_expect,z_expect))
 
 
         # And calculate covariance matrix:
@@ -2008,10 +2008,13 @@ class SeisScan:
         # Converting the grid location to X,Y,Z
         expect_vector = self.lookup_table.xyz2coord(self.lookup_table.loc2xyz(np.array([[GAU3D[0][0],GAU3D[0][1],GAU3D[0][2]]])))[0]
 
+        expect_vector_cov = np.array([x_expect, y_expect, z_expect], dtype=float)
+        Loc_cov = self.lookup_table.xyz2coord(self.lookup_table.loc2xyz(np.array([[expect_vector_cov[0]/self.lookup_table.cell_size[0],expect_vector_cov[1]/self.lookup_table.cell_size[1],expect_vector_cov[2]/self.lookup_table.cell_size[2]]])))[0]
 
         ErrorXYZ = np.array([GAU3D[2][0]*self.lookup_table.cell_size[0], GAU3D[2][1]*self.lookup_table.cell_size[1], GAU3D[2][2]*self.lookup_table.cell_size[2]])
 
-        return expect_vector, ErrorXYZ
+
+        return expect_vector, ErrorXYZ, Loc_cov, cov_matrix
 
 
 
@@ -2035,11 +2038,11 @@ class SeisScan:
 
 
         # Determining the location error as a error-ellipse
-        LOC,LOC_ERR = self._ErrorEllipse(CoaMap)
+        LOC,LOC_ERR,LOC_Cov,ErrCOV = self._ErrorEllipse(CoaMap)
 
 
         #LOC,ErrCOV = self._ErrorEllipse(CoaMap)
-        #LOC_ERR =  np.array([np.sqrt(ErrCOV[0,0]), np.sqrt(ErrCOV[1,1]), np.sqrt(ErrCOV[2,2])])
+        LOC_ERR_Cov =  np.array([np.sqrt(ErrCOV[0,0]), np.sqrt(ErrCOV[1,1]), np.sqrt(ErrCOV[2,2])])
 
 
 
@@ -2050,7 +2053,7 @@ class SeisScan:
         # MaxY = np.sum(np.max(np.sum(ErrorVolume,axis=1),axis=1),axis=0)*self.lookup_table.cell_size[1]
         # MaxZ = np.sum(np.max(np.sum(ErrorVolume,axis=2),axis=1),axis=0)*self.lookup_table.cell_size[2]
 
-        return LOC,LOC_ERR
+        return LOC,LOC_ERR,LOC_Cov,LOC_ERR_Cov
 
 
 
@@ -2101,11 +2104,11 @@ class SeisScan:
 
             # Determining earthquake location error
             tic()
-            LOC,LOC_ERR = self._LocationError(self.MAP)
+            LOC,LOC_ERR,LOC_Cov,LOC_ERR_Cov = self._LocationError(self.MAP)
             toc()
 
 
-            EV = pd.DataFrame([np.append(self.EVENT_max.as_matrix(),[LOC[0],LOC[1],LOC[2],LOC_ERR[0],LOC_ERR[1],LOC_ERR[2]])],columns=['DT','COA','X','Y','Z','X_ErrE','Y_ErrE','Z_ErrE','ErrX','ErrY','ErrZ'])
+            EV = pd.DataFrame([np.append(self.EVENT_max.as_matrix(),[LOC[0],LOC[1],LOC[2],LOC_ERR[0],LOC_ERR[1],LOC_ERR[2],LOC_Cov[0],LOC_Cov[1],LOC_Cov[2],LOC_ERR_Cov[0],LOC_ERR_Cov[1],LOC_ERR_Cov[2]])],columns=['DT','COA','X','Y','Z','Gaussian_X','Gaussian_Y','Gaussian_Z','Gaussian_ErrX','Gaussian_ErrY','Gaussian_ErrZ','Covariance_X','Covariance_Y','Covariance_Z','Covariance_ErrX','Covariance_ErrY','Covariance_ErrZ'])
             self.output.write_event(EV,str(EVENTS['EventID'].iloc[e].astype(str)))
             if self.CutMSEED == True:
                 print('Creating cut Mini-SEED')
