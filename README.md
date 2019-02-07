@@ -4,42 +4,12 @@ A python and C software package for detection and location of seismic events usi
 
 
 ## Software Background and Methods 
-### Travel Time  - Travel-Time look-up table generation and definition
-
-### Seismic Data - Definition of continious seismic data strcture for MSEED data
-
-### Detect - Detection of coherent signals.
-
-### Trigger - Event Triggering and Locations.
-
-
+ To be added shortly ...
 
 ## Getting Started
 
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes. See deployment for notes on how to deploy the project on a live system.
 
-### Installing
-
-A step by step series of examples that tell you how to get a development env running
-
-Say what the step will be
-
-```
-Give the example
-```
-
-And repeat
-
-```
-until finished
-```
-
-End with an example of getting some data out of the system or using it for a little demo
-
-### Running the tests
-
-Explain how to run the automated tests for this system
-
+... Attach Jupyter Notebook with example ... 
 
 
 ## Built With
@@ -51,7 +21,7 @@ Explain how to run the automated tests for this system
 
 ## Collaborating
 
-Please 
+Please contact lead authors for corresponding collaboration.
 
 ## Authors
 
@@ -63,4 +33,4 @@ Future contributors will be added to this list.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details. For industry usage please contact [cmscanning.Collaboration](cmscanning.Collaboration@gmail.com).
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
