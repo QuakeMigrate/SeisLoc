@@ -3,7 +3,7 @@
 
 
 # ---- Import Packages -----
-
+import matplotlib
 import numpy as np
 from SeisLoc.core.time import UTCDateTime
 import SeisLoc.core.model as cmod
@@ -12,6 +12,7 @@ from datetime import timedelta
 
 from obspy import read,Stream,Trace
 from obspy.core import UTCDateTime
+from obspy.signal.invsim import cosine_taper
 
 from obspy.signal.trigger import classic_sta_lta
 from scipy.signal import butter, lfilter
@@ -29,12 +30,16 @@ import pickle
 
 import pandas as pd
 
+try:
+    os.environ['DISPLAY']
+    matplotlib.use('Qt4Agg')
+except KeyError:
+    matplotlib.use('Agg')
+import matplotlib.pylab as plt
+
+
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Rectangle
-
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pylab as plt
 import matplotlib.dates as mdates
 from matplotlib import patches
 import matplotlib.image as mpimg
@@ -114,6 +119,9 @@ def filter(sig,srate,lc,hc,order=3):
     #sig = detrend(sig)
     for ch in range(0, nchan):
         fsig[ch,:] = fsig[ch,:] - fsig[ch,0]
+
+        tap = cosine_taper(len(fsig[ch,:]),0.1)
+        fsig[ch,:] = fsig[ch,:]*tap
         fsig[ch,:] = lfilter(b1, a1, fsig[ch,::-1])[::-1]
         fsig[ch,:] = lfilter(b1, a1, fsig[ch,:])
     return fsig
@@ -252,6 +260,11 @@ class SeisOutFile:
         with open(fname, append_write) as fp:
             for ii in range(ARRAY.shape[0]):
                 fp.write('{},{},{},{},{}\n'.format(ARRAY[ii,0],ARRAY[ii,1],ARRAY[ii,2],ARRAY[ii,3],ARRAY[ii,4]))
+
+
+    def write_TriggerEvents(self,DF):
+        fname = path.join(self.path,self.name + '_TriggeredEvents.csv')
+        DF.to_csv(fname)
 
 
     def write_decscan(self,sampling_rate):
@@ -725,6 +738,9 @@ class SeisPlot:
                 P_Onset.set_xlim([MINT,MAXT])
                 S_Onset.set_xlim([MINT,MAXT])
 
+                P_Onset.set_ylim([0.0, P_Onset.get_ylim()[1]])
+                S_Onset.set_ylim([0.0, S_Onset.get_ylim()[1]])
+
 
                 fig.suptitle('Trace for Station {} - PPick = {}, SPick = {}'.format(self.LUT.station_data['Name'][ii],self.StationPick['GAU_P'][ii]['PickValue'],self.StationPick['GAU_S'][ii]['PickValue']))
 
@@ -803,18 +819,7 @@ class SeisPlot:
         else:
             StaInd = np.argsort(self.DATA.StationInformation['Name'])[::-1]
 
-
-        for ii in range(self.DATA.signal.shape[1]): 
-           if self.FilteredSignal == False:
-                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.signal[0,ii,:]/np.max(abs(self.DATA.signal[0,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'r',linewidth=0.5,zorder=1)
-                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.signal[1,ii,:]/np.max(abs(self.DATA.signal[1,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'b',linewidth=0.5,zorder=2)
-                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.signal[2,ii,:]/np.max(abs(self.DATA.signal[2,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'g',linewidth=0.5,zorder=3)
-           else:
-                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.FilteredSignal[0,ii,:]/np.max(abs(self.DATA.FilteredSignal[0,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'r',linewidth=0.5,zorder=1)
-                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.FilteredSignal[1,ii,:]/np.max(abs(self.DATA.FilteredSignal[1,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'b',linewidth=0.5,zorder=2)
-                   Coa_Trace.plot(np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate)),(self.DATA.FilteredSignal[2,ii,:]/np.max(abs(self.DATA.FilteredSignal[2,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'g',linewidth=0.5,zorder=3)
-
-        # ---------------- Plotting the Station Travel Times -----------
+        # ---------------- Determining Station Travel-Times -----------
         for i in range(self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0].shape[0]):
            tp = self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=self.LUT.get_value_at('TIME_P',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][i])
            ts = self.EVENT['DT'].iloc[np.argmax(self.EVENT['COA'])] + timedelta(seconds=self.LUT.get_value_at('TIME_S',np.array([indexVal[0][0],indexVal[1][0],indexVal[2][0]]))[0][i])
@@ -826,6 +831,23 @@ class SeisPlot:
                TP = np.append(TP,tp)
                TS = np.append(TS,ts)
 
+
+        DDD=np.arange(self.DATA.startTime,self.DATA.endTime+timedelta(seconds=1/self.DATA.sampling_rate),timedelta(seconds=1/self.DATA.sampling_rate))
+        # print(pd.to_datetime(pd.Series(DDD)))
+        # DDD_min = np.argmin(abs(pd.to_datetime(pd.Series(DDD)) - (self.DATA.startTime+timedelta(seconds=1.6))))
+        # DDD_max = np.argmin(abs(pd.to_datetime(pd.Series(DDD)) - (np.max(TS))))
+
+        for ii in range(self.DATA.signal.shape[1]): 
+           if self.FilteredSignal == False:
+                   Coa_Trace.plot(DDD,(self.DATA.signal[0,ii,:]/np.max(abs(self.DATA.signal[0,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'r',linewidth=0.5,zorder=1)
+                   Coa_Trace.plot(DDD,(self.DATA.signal[1,ii,:]/np.max(abs(self.DATA.signal[1,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'b',linewidth=0.5,zorder=2)
+                   Coa_Trace.plot(DDD,(self.DATA.signal[2,ii,:]/np.max(abs(self.DATA.signal[2,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'g',linewidth=0.5,zorder=3)
+           else:
+                   Coa_Trace.plot(DDD,(self.DATA.FilteredSignal[0,ii,:]/np.max(abs(self.DATA.FilteredSignal[0,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'r',linewidth=0.5,zorder=1)
+                   Coa_Trace.plot(DDD,(self.DATA.FilteredSignal[1,ii,:]/np.max(abs(self.DATA.FilteredSignal[1,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'b',linewidth=0.5,zorder=2)
+                   Coa_Trace.plot(DDD,(self.DATA.FilteredSignal[2,ii,:]/np.max(abs(self.DATA.FilteredSignal[2,ii,:])))*self.TraceScaling+(StaInd[ii]+1),'g',linewidth=0.5,zorder=3)
+
+        # ---------------- Plotting Station Travel-Times -----------
 
         self.CoaArriavalTP = Coa_Trace.scatter(TP,(StaInd+1),50,'pink',marker='v',zorder=4,linewidth=0.1,edgecolors='black')
         self.CoaArriavalTS = Coa_Trace.scatter(TS,(StaInd+1),50,'purple',marker='v',zorder=5,linewidth=0.1,edgecolors='black')
@@ -1066,7 +1088,7 @@ class SeisScan:
 
         ttmax = np.max(lut.fetch_map('TIME_S'))
         self.pre_pad   = None
-        self.post_pad  = round(ttmax)
+        self.post_pad  = round(ttmax + ttmax*0.05)
         self.time_step = 10.0
 
         self.daten = None
@@ -1120,6 +1142,7 @@ class SeisScan:
         self.CutMSEED           = False
         self.PickingType        = 'Gaussian'
         self.LocationError      = 0.95
+        self.NormaliseCoalescence = False
 
         self.Output_SampleRate = None 
 
@@ -1167,8 +1190,8 @@ class SeisScan:
         sig_n_raw,sig_n = onset(sig_n, stw, ltw)                                          # Determine the onset function from the filtered signal
         self.onset_data['sige'] = sig_e                                         # Define the onset function from the data
         self.onset_data['sign'] = sig_n                                         # Define the onset function from the data                
-        snr = np.sqrt(sig_e * sig_e + sig_n * sig_n)
-        snr_raw = np.sqrt(sig_e_raw * sig_e_raw + sig_n_raw * sig_n_raw)                            # Define the combined onset function from E & N
+        snr = np.sqrt((sig_e * sig_e + sig_n * sig_n)/2.)
+        snr_raw = np.sqrt((sig_e_raw * sig_e_raw + sig_n_raw * sig_n_raw)/2.)                            # Define the combined onset function from E & N
         self.onset_data['sigs'] = snr
         return snr_raw,snr
 
@@ -1205,6 +1228,7 @@ class SeisScan:
         ttp = self.lookup_table.fetch_index('TIME_P', srate)
         tts = self.lookup_table.fetch_index('TIME_S', srate)
         tt = np.c_[ttp, tts]
+        del ttp,tts
 
         nchan, tsamp = snr.shape
 
@@ -1215,34 +1239,22 @@ class SeisScan:
 
         ncell = tuple(self.lookup_table.cell_count)
 
-        if self._map is None:
-            #print('  Allocating memory: {}'.format(ncell + (tsamp,)))
-            self._map = np.zeros(ncell + (nsamp,), dtype=np.float64)
+        _map = np.zeros(ncell + (nsamp,), dtype=np.float64)
 
         dind = np.zeros(nsamp, np.int64)
         dsnr = np.zeros(nsamp, np.double)
 
-        # ilib.scan(snr, tt, 0, pre_smp + nsamp +pos_smp, self._map, self.NumberOfCores)
-        # ilib.detect(self._map, dsnr, dind, 0, pre_smp + nsamp +pos_smp, self.NumberOfCores)
-        # daten = np.arange((cstart+timedelta(seconds=self.pre_pad)), (cend + timedelta(seconds=-self.post_pad) + timedelta(seconds=1/srate)),timedelta(seconds=1/srate)) 
-        # dsnr = np.exp((dsnr / nchan) - 1.0)
-        # #dsnr = classic_sta_lta(np.exp((dsnr / nchan) - 1.0),self.onset_win_p1[0]*self.sample_rate*0.5,self.onset_win_p1[1]*self.sample_rate*0.5)
-        # dsnr = dsnr[pre_smp:pre_smp + nsamp]
-        # dloc  = self.lookup_table.index2xyz(dind[pre_smp:pre_smp + nsamp])
-        # MAP   = self._map[:,:,:,(pre_smp+1):pre_smp + nsamp]
-
-        ilib.scan(snr, tt, pre_smp, pos_smp, nsamp, self._map, self.NumberOfCores)
-        ilib.detect(self._map, dsnr, dind, 0,nsamp, self.NumberOfCores)
-        daten = np.arange((cstart+timedelta(seconds=self.pre_pad)), (cend + timedelta(seconds=-self.post_pad) + timedelta(seconds=1/srate)),timedelta(seconds=1/srate)) 
-        dsnr = np.exp((dsnr / nchan) - 1.0)
-        #dsnr = classic_sta_lta(np.exp((dsnr / nchan) - 1.0),self.onset_win_p1[0]*self.sample_rate*0.5,self.onset_win_p1[1]*self.sample_rate*0.5)
-        dsnr = dsnr
+        ilib.scan(snr, tt, pre_smp, pos_smp, nsamp, _map, self.NumberOfCores)
+        if self.NormaliseCoalescence == True:
+            _map =  _map / np.sum(_map,axis=(0,1,2))[np.newaxis,np.newaxis,np.newaxis,:]
+        ilib.detect(_map, dsnr, dind, 0,nsamp, self.NumberOfCores)
+        daten = np.arange((cstart+timedelta(seconds=self.pre_pad)), (cend + timedelta(seconds=-self.post_pad) + timedelta(seconds=1/srate)),timedelta(seconds=1/srate))
+        if self.NormaliseCoalescence == False:
+            dsnr  = np.exp((dsnr / (len(avaInd)*2)) - 1.0)
+        else:
+            dsnr  = dsnr * _map.shape[0] * _map.shape[1] * _map.shape[2]
         dloc  = self.lookup_table.index2xyz(dind)
-        MAP   = self._map
-
-
-        self._map = None
-        return daten, dsnr, dloc, MAP
+        return daten, dsnr, dloc, _map
 
 
     def _continious_compute(self,starttime,endtime):
@@ -1271,41 +1283,31 @@ class SeisScan:
         print('   Continious Seismic Processing for {} to {}'.format(datetime.strftime(self.StartDateTime,'%Y-%m-%dT%H:%M:%S.%f'),datetime.strftime(self.EndDateTime,'%Y-%m-%dT%H:%M:%S.%f')))
         print('==============================================================================================================================')
 
+        # adding pre- and post-pad to remove affect from taper
+        timeLen       = self.pre_pad + self.post_pad + self.time_step
+        self.pre_pad  = self.pre_pad + round(timeLen*0.06)
+        self.post_pad = self.post_pad + round(timeLen*0.06)
+
         i = 0 
         while self.EndDateTime >= (self.StartDateTime + timedelta(seconds=self.time_step*(i+1))):
-            cstart =  self.StartDateTime + timedelta(seconds=self.time_step*i) - timedelta(seconds=self.pre_pad)
+            cstart =  self.StartDateTime + timedelta(seconds=self.time_step*i) + timedelta(seconds=-self.pre_pad)
             cend   =  self.StartDateTime + timedelta(seconds=self.time_step*(i+1)) + timedelta(seconds=self.post_pad)
 
             print('~~~~~~~~~~~~~ Processing - {} to {} ~~~~~~~~~~~~~'.format(datetime.strftime(cstart,'%Y-%m-%dT%H:%M:%S.%f'),datetime.strftime(cend,'%Y-%m-%dT%H:%M:%S.%f'))) 
 
             self.DATA.read_mseed(datetime.strftime(cstart,'%Y-%m-%dT%H:%M:%S.%f'),datetime.strftime(cend,'%Y-%m-%dT%H:%M:%S.%f'),self.sample_rate)
             #daten, dsnr, dloc = self._compute_s1(0.0, DATA.signal)
-            daten, dsnr, dloc, map = self._compute(cstart,cend, self.DATA.signal,self.DATA.station_avaliability)
+            daten, dsnr, dloc, _map = self._compute(cstart,cend, self.DATA.signal,self.DATA.station_avaliability)
 
             dcoord = self.lookup_table.xyz2coord(dloc)
             self.output.FileSampleRate = self.Output_SampleRate
 
-#            self.output.write_scan(daten[:-1],CoaVp[:-1],dcoord[:-1,:])
-
-            if i == 0:
-                CoaVp = dsnr + (CoaV-dsnr[0])
-                self.output.write_scan(daten[:-1],CoaVp[:-1],dcoord[:-1,:])
-                CoaV=CoaVp[-1]
-            else:
-                CoaVp = dsnr + (CoaV-dsnr[0])
-                self.output.write_scan(daten[:-1],CoaVp[:-1],dcoord[:-1,:])
-                CoaV=CoaVp[-1]
-
+            self.output.write_scan(daten[:-1],dsnr[:-1],dcoord[:-1,:])
+            
+            del daten, dsnr, dloc, _map
             i += 1
 
-
-
-        # Changing format of SCN file to reduce filesize
-        #self.output.write_decscan(self.DATA.sampling_rate)
-        del daten, dsnr, dloc, map
-
-
-
+        
     def _Trigger_scn(self,CoaVal,starttime,endtime):
 
 
@@ -1490,6 +1492,11 @@ class SeisScan:
         if self.pre_pad is None:
             self.pre_pad = max(self.onset_win_p1[1],self.onset_win_s1[1]) + 3*max(self.onset_win_p1[0],self.onset_win_s1[0])
         
+
+
+
+
+
         # Dectect the possible events from the decimated grid
         self._continious_compute(starttime,endtime)
 
@@ -1684,134 +1691,105 @@ class SeisScan:
         #print('Fitting Gaussian for {} -  {} -  {}'.format(PHASE,cstart,eventT))
 
         sampling_rate = self.sample_rate
-
-        # Determining the modelled picks for P- and S-wave
         trig_idx_P = int(((eventTP-cstart).seconds + (eventTP-cstart).microseconds/10.**6) *sampling_rate)
         trig_idx_S = int(((eventTS-cstart).seconds + (eventTS-cstart).microseconds/10.**6) *sampling_rate)
 
-        # Defining the bounds to determine the cdf information from
-        P_idxmin = int(trig_idx_P - (trig_idx_S-trig_idx_P)/2)
-        P_idxmax = int(trig_idx_P + (trig_idx_S-trig_idx_P)/2)
-        S_idxmin = int(trig_idx_S - (trig_idx_S-trig_idx_P)/2)
-        S_idxmax = int(trig_idx_S + (trig_idx_S-trig_idx_P)/2)
-        for ii in [P_idxmin,P_idxmax,S_idxmin,S_idxmax]:
-            if ii < 0:
-                ii = 0
-            if ii > len(SNR):
-                ii = len(SNR)
-
         # Setting parameters depending on the phase
         if PHASE == 'P':
+            P_idxmin = int(trig_idx_P - (trig_idx_S-trig_idx_P)/(2.))
+            P_idxmax = int(trig_idx_P + (trig_idx_S-trig_idx_P)/(2.))
+            for ii in [P_idxmin,P_idxmax]:
+                if ii < 0:
+                    ii = 0
+                if ii > len(SNR):
+                    ii = len(SNR)
+
+
             lowfreq = self.bp_filter_p1[0]
             win_min = P_idxmin
             win_max = P_idxmax
+
+            # Defining the bounds to search for the event over
+            P_idxmin_new = int(trig_idx_P - int((self.MarginalWindow + ttp*self.PercentageTT)*sampling_rate))
+            P_idxmax_new = int(trig_idx_P + int((self.MarginalWindow + ttp*self.PercentageTT)*sampling_rate))
+            
+            # Setting so the search region can't be bigger than P-S/2.
+            idxmin = np.max([P_idxmin,P_idxmin_new])
+            idxmax = np.min([P_idxmax,P_idxmax_new])
+            # Determining the pick as the maximum coalescence value
+            maxSNR = np.argmax(SNR[idxmin:idxmax]) + idxmin
+            # Determining the trimmed SNR data to view around 
+            SNR_trim = SNR[idxmin:idxmax] # or SNR
+
+
         if PHASE == 'S':
+            S_idxmin = int(trig_idx_S - (trig_idx_S-trig_idx_P)/2.)
+            S_idxmax = int(trig_idx_S + (trig_idx_S-trig_idx_P)/2.) 
+            for ii in [S_idxmin,S_idxmax]:
+                if ii < 0:
+                    ii = 0
+                if ii > len(SNR):
+                    ii = len(SNR)
+
             lowfreq = self.bp_filter_s1[0]
             win_min = S_idxmin
             win_max = S_idxmax
 
-        # Determining the cdf for the data
-        fit = stats.norm.fit(SNR[win_min:win_max])
-
-        if (fit[0] != 0.0) and (fit[1] != 0.0):
-
-            cdf = stats.norm.cdf(np.arange(0,100,0.01),fit[0],fit[1])
-
-
-            exceedence_value = np.arange(0,100,0.01)[np.where(cdf >= self.PickThreshold)[0][0]]
-            std_SNR = np.arange(0,100,0.01)[np.where(cdf >= 0.688)[0][0]]
-            #print(exceedence_value)
-
-            # Defining the bounds to search for the event over
-
-            P_idxmin_new = int(trig_idx_P - int((self.MarginalWindow + ttp*self.PercentageTT)*sampling_rate))
-            P_idxmax_new = int(trig_idx_P + int((self.MarginalWindow + ttp*self.PercentageTT)*sampling_rate))
             S_idxmin_new = int(trig_idx_S - int((self.MarginalWindow + tts*self.PercentageTT)*sampling_rate))
             S_idxmax_new = int(trig_idx_S + int((self.MarginalWindow + tts*self.PercentageTT)*sampling_rate))
 
-
-            # Setting so the search region can't be bigger than P-S/2. 
-            P_idxmin = np.max([P_idxmin,P_idxmin_new])
-            P_idxmax = np.min([P_idxmax,P_idxmax_new])
-            S_idxmin = np.max([S_idxmin,S_idxmin_new])
-            S_idxmax = np.min([S_idxmax,S_idxmax_new])
-
-
-            # Determining the pick as the maximum coalescence value
-            Pidx = np.argmax(SNR[P_idxmin:P_idxmax]) + P_idxmin
-            Sidx = np.argmax(SNR[S_idxmin:S_idxmax]) + S_idxmin
-            #print(Pidx,Sidx)
-
-            if PHASE == 'P':
-                maxSNR = Pidx
-            if PHASE == 'S':
-                maxSNR = Sidx
-
-            if SNR[maxSNR] >= exceedence_value:
-                # Selecting a time window that is equal to the data that is above the PickThreshold
-                ppf = np.where(SNR <= std_SNR)[0] - maxSNR
-                ppf_min = int(maxSNR - np.min(abs(ppf[np.where(ppf < 0)])))
-                ppf_max = int(maxSNR + np.min(abs(ppf[np.where(ppf > 0)])))
+            idxmin = np.max([S_idxmin,S_idxmin_new])
+            idxmax = np.min([S_idxmax,S_idxmax_new])
+            maxSNR = np.argmax(SNR[idxmin:idxmax]) + idxmin
+            SNR_trim = SNR[idxmin:idxmax]
 
 
 
-                data_half_range = int(1.25*sampling_rate/(lowfreq)) # half range number of indices to fit guassian over (for 1 wavelengths of lowest frequency component)
-                x_data = np.arange(ppf_min, ppf_max,dtype=float)/sampling_rate # x data, in seconds
-                y_data = SNR[ppf_min:ppf_max] # +/- one wavelength of lowest frequency around trigger
-                p0 = [np.amax(y_data), float(ppf_min+1)/sampling_rate, 1./(lowfreq/4.)] # Initial guess (should work for any sampling rate and frequency)
+        # Determining the exceedence value of the trace
+        exceedence_value = np.percentile(SNR,self.PickThreshold*100)
+        
 
-                d = 0
-                for jj in range(len(x_data)):
-                    if d == 0:
-                        XDATA = cstart + timedelta(seconds=x_data[jj])
-                        d+=1
-                    else:
-                        XDATA = np.hstack((XDATA,(cstart + timedelta(seconds=x_data[jj]))))
+        if SNR[maxSNR] >= exceedence_value and (SNR_trim - exceedence_value).any() > 0:
+            # Fitting only around the exceedence vaue
+            gauidxmin = np.where((SNR_trim - exceedence_value) > 0)[0][0] + idxmin
+            gauidxmax = np.where((SNR_trim - exceedence_value) > 0)[0][-1] + idxmin
 
-                try:
-                    popt, pcov = curve_fit(gaussian_func, x_data, y_data, p0) # Fit gaussian to data
-                    sigma = np.absolute(popt[2]) # Get standard deviation from gaussian fit
-
-                    # Mean is popt[1]. x_data[0] + popt[1] (In seconds)
-                    mean = cstart + timedelta(seconds=float(popt[1]))
-
-                    maxSNR = popt[0]
-
-                    GAU_FITS = {}
-                    GAU_FITS['popt'] = popt
-                    GAU_FITS['xdata'] = x_data
-                    GAU_FITS['xdata_dt'] = XDATA
-                    GAU_FITS['PickValue'] = maxSNR
-                    GAU_FITS['PickThreshold'] = exceedence_value
-
-                except:
-                    GAU_FITS = {}
-                    GAU_FITS['popt'] = 0
-                    GAU_FITS['xdata'] = 0
-                    GAU_FITS['xdata_dt'] = 0
-                    GAU_FITS['PickValue'] = -1
-                    GAU_FITS['PickThreshold'] = -1
+            data_half_range = int(sampling_rate/(lowfreq)) # half range number of indices to fit guassian over (for 1 wavelengths of lowest frequency component)
+            x_data = np.arange(gauidxmin, gauidxmax,dtype=float)/sampling_rate # x data, in seconds
+            y_data = SNR[gauidxmin:gauidxmax] # +/- one wavelength of lowest frequency around trigger
 
 
-                    sigma = -1
-                    mean  = -1
-                    maxSNR = -1
+             # Initial guess (should work for any sampling rate and frequency)
+           #print(x_data, y_data, p0)
 
-            else:
+
+
+            d = 0
+            for jj in range(len(x_data)):
+                if d == 0:
+                    XDATA = cstart + timedelta(seconds=x_data[jj])
+                    d+=1
+                else:
+                    XDATA = np.hstack((XDATA,(cstart + timedelta(seconds=x_data[jj]))))
+
+            try:
+                p0 = [np.amax(y_data), float(gauidxmin+np.argmax(y_data))/sampling_rate, data_half_range/sampling_rate]
+                popt, pcov = curve_fit(gaussian_func, x_data, y_data, p0) # Fit gaussian to data
+                sigma = np.absolute(popt[2]) # Get standard deviation from gaussian fit
+
+                # Mean is popt[1]. x_data[0] + popt[1] (In seconds)
+                mean = cstart + timedelta(seconds=float(popt[1]))
+
+                maxSNR = popt[0]
 
                 GAU_FITS = {}
-                GAU_FITS['popt'] = 0
-                GAU_FITS['xdata'] = 0
-                GAU_FITS['xdata_dt'] = 0
-                GAU_FITS['PickValue'] = -1
+                GAU_FITS['popt'] = popt
+                GAU_FITS['xdata'] = x_data
+                GAU_FITS['xdata_dt'] = XDATA
+                GAU_FITS['PickValue'] = maxSNR
                 GAU_FITS['PickThreshold'] = exceedence_value
 
-
-                sigma = -1
-                mean  = -1
-                maxSNR = -1
-        else:
-
+            except:
                 GAU_FITS = {}
                 GAU_FITS['popt'] = 0
                 GAU_FITS['xdata'] = 0
@@ -1823,6 +1801,18 @@ class SeisScan:
                 sigma = -1
                 mean  = -1
                 maxSNR = -1
+        else:
+            GAU_FITS = {}
+            GAU_FITS['popt'] = 0
+            GAU_FITS['xdata'] = 0
+            GAU_FITS['xdata_dt'] = 0
+            GAU_FITS['PickValue'] = -1
+            GAU_FITS['PickThreshold'] = exceedence_value
+
+
+            sigma = -1
+            mean  = -1
+            maxSNR = -1
 
         return GAU_FITS,maxSNR,sigma,mean
 
@@ -1881,7 +1871,7 @@ class SeisScan:
 
         #print(STATION_pickS)
         # Saving the output from the triggered events
-        STATION_pickS = STATION_pickS[['Name','Phase','ModelledTime','PickTime','PickError']]
+        STATION_pickS = STATION_pickS[['Name','Phase','ModelledTime','PickTime','PickError','PickSNR']]
         self.output.write_stationsfile(STATION_pickS,EventName)
 
         return STATION_pickS,GAUP,GAUS
@@ -2040,12 +2030,18 @@ class SeisScan:
 
         # Determining the coalescence 3D map
         CoaMap = np.log(np.sum(np.exp(Map4D),axis=-1))
-        CoaMap = CoaMap/np.max(CoaMap)
 
+        CoaMap = CoaMap/np.max(CoaMap)
         CoaMap_Cutoff = 0.88
         CoaMap[CoaMap < CoaMap_Cutoff] = CoaMap_Cutoff 
         CoaMap = CoaMap - CoaMap_Cutoff 
         CoaMap = CoaMap/np.max(CoaMap)
+
+        # CoaMap_Cutoff = np.mean(CoaMap)
+        # CoaMap[CoaMap < CoaMap_Cutoff] = CoaMap_Cutoff 
+        # CoaMap = CoaMap - CoaMap_Cutoff 
+        # CoaMap = CoaMap/np.max(CoaMap)
+
         self.CoaMAP = CoaMap
 
 
@@ -2068,6 +2064,48 @@ class SeisScan:
         return LOC,LOC_ERR,LOC_Cov,LOC_ERR_Cov
 
 
+    def TriggerSCN(self,starttime,endtime,save=False):
+        CoaVal = self.output.read_scan()
+        EVENTS = self._Trigger_scn(CoaVal,starttime,endtime)
+        EVENTS = EVENTS[['CoaTime','COA_V']]
+        EVENTS.columns = ['DateTime','CoalescenceValue']
+
+        # saving the EVENTS file
+        self.output.write_TriggerEvents(EVENTS)
+
+        # plotting the Coalescence 
+        CoaVal['DT'] = pd.to_datetime(CoaVal['DT'])
+        plt.plot(CoaVal['DT'],CoaVal['COA'],'b',label='Maximum Coalescence',linewidth=1.0)
+
+        EVENTS['DateTime'] = pd.to_datetime(EVENTS['DateTime'])
+        c=0
+        for i in EVENTS['DateTime']:
+            if c == 0:
+                plt.axvline(i.to_pydatetime() + timedelta(seconds=-(self.MinimumRepeat + self.MarginalWindow/2)),c='r', linestyle='--',label='Minimum Repeat Window',linewidth=0.5) 
+                plt.axvline(i.to_pydatetime() + timedelta(seconds=(self.MinimumRepeat + self.MarginalWindow/2)),c='r', linestyle='--',linewidth=0.5)
+                plt.axvline(i.to_pydatetime(),c='r',label='Detected Events',linewidth=0.5)
+            else:
+                plt.axvline(i.to_pydatetime() + timedelta(seconds=-(self.MinimumRepeat + self.MarginalWindow/2)),c='r', linestyle='--',linewidth=0.5)
+                plt.axvline(i.to_pydatetime() + timedelta(seconds=(self.MinimumRepeat + self.MarginalWindow/2)),c='r', linestyle='--',linewidth=0.5)
+                plt.axvline(i.to_pydatetime(),c='r',linewidth=0.5)
+            c+=1
+
+        plt.axhline(self.DetectionThreshold,c='g',label='Detection Threshold')
+        plt.xlim([datetime.strptime(starttime,'%Y-%m-%dT%H:%M:%S.%f'),datetime.strptime(endtime,'%Y-%m-%dT%H:%M:%S.%f')])
+        plt.legend()
+
+        plt.title('Maximum Coalescence Value - {}{}'.format(self.output.path,self.output.name))
+        plt.ylabel('Maximum Coalescence Value')
+        plt.xlabel('DateTime')
+
+        if save == True:
+            fname = path.join(self.output.path,self.output.name + '_TriggeredEvents.pdf')
+            plt.savefig(fname)
+        else:
+            plt.show()
+
+
+
 
     def Trigger(self,starttime,endtime):
         '''
@@ -2085,16 +2123,25 @@ class SeisScan:
         # Define pre-pad as a function of the onset windows
         if self.pre_pad is None:
             self.pre_pad = max(self.onset_win_p1[1],self.onset_win_s1[1]) + 3*max(self.onset_win_p1[0],self.onset_win_s1[0])
-        
+
         #
         Triggered = pd.DataFrame(columns=['DT','COA','X','Y','Z','ErrX','ErrY','ErrZ'])
         for e in range(len(EVENTS)):
 
             print('--Processing for Event {} of {} - {}'.format(e+1,len(EVENTS),(EVENTS['EventID'].iloc[e]).astype(str)))
             tic()
+
+            # WTF WTF WTF
+            # Adding the window for the tapering 
+            # timeLen = self.pre_pad + self.post_pad + (EVENTS['MaxTime'].iloc[e] - EVENTS['MinTime'].iloc[e]).total_seconds()
+            # self.pre_pad = self.pre_pad + round(timeLen*0.05)
+            # self.post_pad = self.post_pad + round(timeLen*0.05)
+            # print(self.pre_pad,self.post_pad)
+
             # Determining the Seismic event location
             cstart = EVENTS['MinTime'].iloc[e] + timedelta(seconds=-self.pre_pad) 
             cend   = EVENTS['MaxTime'].iloc[e] + timedelta(seconds=self.post_pad)
+
             self.DATA.read_mseed(cstart.strftime('%Y-%m-%dT%H:%M:%S.%f'),cend.strftime('%Y-%m-%dT%H:%M:%S.%f'),self.sample_rate)
 
             daten, dsnr, dloc, self.MAP = self._compute(cstart,cend,self.DATA.signal,self.DATA.station_avaliability)
@@ -2120,7 +2167,7 @@ class SeisScan:
             toc()
 
 
-            EV = pd.DataFrame([np.append(self.EVENT_max.as_matrix(),[LOC[0],LOC[1],LOC[2],LOC_ERR[0],LOC_ERR[1],LOC_ERR[2],LOC_Cov[0],LOC_Cov[1],LOC_Cov[2],LOC_ERR_Cov[0],LOC_ERR_Cov[1],LOC_ERR_Cov[2]])],columns=['DT','COA','X','Y','Z','Gaussian_X','Gaussian_Y','Gaussian_Z','Gaussian_ErrX','Gaussian_ErrY','Gaussian_ErrZ','Covariance_X','Covariance_Y','Covariance_Z','Covariance_ErrX','Covariance_ErrY','Covariance_ErrZ'])
+            EV = pd.DataFrame([[self.EVENT_max['DT'],self.EVENT_max['COA'],EVENTS['COA_V'].iloc[e],self.EVENT_max['X'],self.EVENT_max['Y'],self.EVENT_max['Z'],LOC[0],LOC[1],LOC[2],LOC_ERR[0],LOC_ERR[1],LOC_ERR[2],LOC_Cov[0],LOC_Cov[1],LOC_Cov[2],LOC_ERR_Cov[0],LOC_ERR_Cov[1],LOC_ERR_Cov[2]]],columns=['DT','DecCOA','COA','X','Y','Z','Gaussian_X','Gaussian_Y','Gaussian_Z','Gaussian_ErrX','Gaussian_ErrY','Gaussian_ErrZ','Covariance_X','Covariance_Y','Covariance_Z','Covariance_ErrX','Covariance_ErrY','Covariance_ErrZ'])
             self.output.write_event(EV,str(EVENTS['EventID'].iloc[e].astype(str)))
             if self.CutMSEED == True:
                 print('Creating cut Mini-SEED')

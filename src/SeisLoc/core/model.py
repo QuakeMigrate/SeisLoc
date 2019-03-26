@@ -14,15 +14,19 @@ import numpy as np
 import pyproj
 from scipy.interpolate import RectBivariateSpline, RegularGridInterpolator, griddata, interp1d
 import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pylab as plt
-
 import subprocess
 import os
 import pandas as pd
 import pickle
 import struct
 import skfmm
+
+try:
+    os.environ['DISPLAY']
+    matplotlib.use('Qt4Agg')
+except KeyError:
+    matplotlib.use('Agg')
+import matplotlib.pylab as plt
 
 # ---- Coordinate transformations ----
 

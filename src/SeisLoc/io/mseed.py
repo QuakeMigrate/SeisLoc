@@ -20,7 +20,9 @@ def _downsample(st,sr):
         Downsampling the MSEED to the designated sampling rate
     '''
     for i in range(0,len(st)):
-        st[i].decimate(factor=int(st[i].stats.sampling_rate/sr), strict_length=False)
+        #st[i].decimate(factor=int(st[i].stats.sampling_rate/sr), strict_length=False)
+        st[i].filter('lowpass',freq=float(sr),corners=2,zerophase=True)
+        st[i].decimate(factor=int(st[i].stats.sampling_rate/sr), strict_length=False, no_filter=True)
 
     return st
 
@@ -100,6 +102,9 @@ class MSEED():
         if TYPE == 'STATION.YEAR.JULIANDAY':
             self.Type = 'STATION.YEAR.JULIANDAY'
 
+        if TYPE == '/STATION/STATION.YearMonthDay':
+            self.Type = '/STATION/STATION.YearMonthDay'
+
 
     def _load_fromPath(self):
         '''
@@ -140,7 +145,19 @@ class MSEED():
 
                 dy += 1 
 
+        if self.Type == '/STATION/STATION.YearMonthDay':
+            dy = 0
+            FILES = []
+            while self.endTime >=  (self.startTime + timedelta(days=dy)):
+                # Determine current time
+                ctime = self.startTime + timedelta(days=dy)
+                #print(ctime)
+                for st in self.StationInformation['Name'].tolist():
+                    #print('{}/{}/{}.{}{:02d}{:02d}*'.format(self.MSEED_path,st,str(st).lower(),str(ctime.year)[-2:],ctime.month,ctime.day))
 
+                    FILES.extend(glob('{}/{}/{}.{}{:02d}{:02d}*'.format(self.MSEED_path,st,str(st).lower(),str(ctime.year)[-2:],ctime.month,ctime.day)))
+                dy += 1
+            #print(FILES)
         self.FILES = FILES
 
 
@@ -162,16 +179,20 @@ class MSEED():
                 for f in self.FILES:
                   try:
                     if c==0:
-                      self.st  = obspy.read(f,starttime=UTCDateTime(self.startTime),endtime=UTCDateTime(self.endTime))
+                      self.st     = obspy.read(f,starttime=UTCDateTime(self.startTime),endtime=UTCDateTime(self.endTime))
+                      self.st_org = obspy.read(f,starttime=UTCDateTime(self.startTime),endtime=UTCDateTime(self.endTime))
                       c +=1
                     else:
                       self.st += obspy.read(f,starttime=UTCDateTime(self.startTime),endtime=UTCDateTime(self.endTime))
+                      self.st_org += obspy.read(f,starttime=UTCDateTime(self.startTime),endtime=UTCDateTime(self.endTime))
                   except:
                     continue
                     print('Station File not MSEED - {}'.format(f))
 
                 # Removing all the stations with gaps greater than 10.0 milliseconds
-                if len(self.st.get_gaps()) > 0 and np.max(np.array(self.st.get_gaps())[:,4]-np.array(self.st.get_gaps())[:,5] > 10.0) == True:
+                #print(self.st)
+                self.st._cleanup()
+                if len(self.st.get_gaps()) > 0:
                   stationRem = np.unique(np.array(self.st.get_gaps())[:,1]).tolist()
                   for sa in stationRem:
                     tr = self.st.select(station=sa)
@@ -180,11 +201,9 @@ class MSEED():
 
 
                 # Combining the mseed and determining station avaliability
-
-                self.st.merge(fill_value='interpolate')
+                self.st.detrend('linear')
                 self.st.detrend('demean')
                 self.st = _downsample(self.st,sampling_rate)
-                
                 signal,stA = self._stationAvaliability(self.st)
 
         else:
