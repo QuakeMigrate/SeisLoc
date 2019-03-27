@@ -4,7 +4,7 @@
 # ---- Import Packages -----
 import obspy
 from obspy import UTCDateTime
-import CMS.core.model as cmod
+import SeisLoc.core.model as cmod
 
 
 from datetime import datetime
@@ -18,11 +18,15 @@ import numpy as np
 def _downsample(st,sr):
     '''
         Downsampling the MSEED to the designated sampling rate
+
+	Add Error handeling of the  decimate of non-int
+
     '''
     for i in range(0,len(st)):
         #st[i].decimate(factor=int(st[i].stats.sampling_rate/sr), strict_length=False)
-        st[i].filter('lowpass',freq=float(sr),corners=2,zerophase=True)
-        st[i].decimate(factor=int(st[i].stats.sampling_rate/sr), strict_length=False, no_filter=True)
+	if sr != st[i].stats.sampling_rate:
+        	st[i].filter('lowpass',freq=float(sr) / 2.000001,corners=2,zerophase=True)
+        	st[i].decimate(factor=int(st[i].stats.sampling_rate/sr), strict_length=False, no_filter=True)
 
     return st
 

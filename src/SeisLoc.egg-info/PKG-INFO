@@ -1,10 +1,10 @@
 Metadata-Version: 1.1
 Name: SeisLoc
-Version: 0.2.18.11.28
-Summary: Coalescence Microseismic Scanning - CMScanning
+Version: 0.2.19.3.26
+Summary: SeisLoc - Coalescence Microseismic Location Analysis
 Home-page: UNKNOWN
-Author: Jonathan Smith, Julian Drew, Tom Hudson, and Tom Winder
-Author-email: jds70@cam.ac.uk
+Author: Jonathan Smith, Tom Hudson, Tom Winder and Julian Drew,
+Author-email: jds70@cantab.net
 License: UNKNOWN
 Description: # ------------------ CMScanning - Coalescence Microseismic Scanning ------------------
         #   Series of Python packages used to detect and locate seismic events from continious
