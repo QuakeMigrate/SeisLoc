@@ -86,6 +86,49 @@ def gaussian_func(x,a,b,c):
     f = a*np.exp(-1.*((x-b)**2)/(2*(c**2)))
     return f
 
+
+def sta_lta_centred(a, nsta, nlta):
+    '''
+
+
+    '''
+
+    # Forcing nsta and nlta to be intergers
+    nsta = int(nsta)
+    nlta = int(nlta)
+
+    # The cumulative sum can be exploited to calculate a moving average (the
+    # cumsum function is quite efficient)
+    sta = np.cumsum(a ** 2)
+
+    # Convert to float
+    sta = np.require(sta, dtype=np.float)
+
+    # Copy for LTA
+    lta = sta.copy()
+
+    # Compute the STA and the LTA
+    #sta[:-nsta] = sta[nsta:] - sta[:-nsta] 
+    sta[nsta:] = sta[nsta:] - sta[:-nsta]  
+    sta[nsta:-nsta] = sta[nsta*2:]
+    sta /= nsta
+
+    lta[nlta:] = lta[nlta:] - lta[:-nlta]
+    lta /= nlta
+
+    # Pad zeros
+    sta[:(nlta -1)] = 0
+    sta[-nsta:] = 0
+
+    # Avoid division by zero by setting zero values to tiny float
+    dtiny = np.finfo(0.0).tiny
+    idx = lta < dtiny
+    lta[idx] = dtiny
+
+    return sta/ lta
+
+
+
 def onset(sig, stw, ltw):
     '''
 
@@ -100,9 +143,10 @@ def onset(sig, stw, ltw):
             snr[ch, :] = 0.0
             snr_raw[ch, :] = snr[ch,:]
         else:
-            snr[ch, :] = classic_sta_lta(sig[ch, :]+1.0, stw, ltw)
+            snr[ch, :] = sta_lta_centred(sig[ch, :], stw, ltw)
+            #snr[ch, :] = classic_sta_lta(sig[ch, :], stw, ltw)
             snr_raw[ch, :] = snr[ch,:]
-            np.clip(1+snr[ch,:],0.8,np.inf,snr[ch, :])
+            np.clip(1+snr[ch,:],1.0,np.inf,snr[ch, :])
             np.log(snr[ch, :], snr[ch, :])
 
     return snr_raw,snr
@@ -1124,7 +1168,8 @@ class SeisScan:
         self._station_s1_flg = None
         self._station_file = None
         self._map = None
-
+        self._daten = None
+        self._dsnr = None
         self.snr = None 
         self._data = None
 
@@ -1232,8 +1277,8 @@ class SeisScan:
 
         nchan, tsamp = snr.shape
 
-        pre_smp = int(self.pre_pad * int(srate))
-        pos_smp = int(self.post_pad * int(srate))
+        pre_smp = int(round(self.pre_pad * int(srate)))
+        pos_smp = int(round(self.post_pad * int(srate)))
         nsamp = tsamp - pre_smp - pos_smp
         daten = 0.0 - pre_smp / srate
 
@@ -1254,6 +1299,10 @@ class SeisScan:
         else:
             dsnr  = dsnr * _map.shape[0] * _map.shape[1] * _map.shape[2]
         dloc  = self.lookup_table.index2xyz(dind)
+        
+        self._dsnr = dsnr
+        self._daten = daten
+
         return daten, dsnr, dloc, _map
 
 
